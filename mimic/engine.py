@@ -78,7 +78,10 @@ class DistillationEngine:
                 covered = int(mask.sum())
                 if covered == 0:
                     return
-                correct = int(((y[mask] == 1) == verdict).sum())
+                if verdict:
+                    correct = int((y[mask] == 1).sum())
+                else:
+                    correct = int((y[mask] == 0).sum())
                 lo, hi = wilson_interval(correct, covered)
                 main_fi = conds[-1][0] if conds else 0
                 feat = names[main_fi]

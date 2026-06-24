@@ -6,6 +6,8 @@ from mimic.engine import DistillationEngine, wilson_interval
 def test_wilson_interval_bounds():
     lo, hi = wilson_interval(9, 10)
     assert 0.0 <= lo <= 0.9 <= hi <= 1.0
+    assert wilson_interval(0, 0) == (0.0, 0.0)        # n=0 guard
+    assert wilson_interval(10, 10)[0] > 0.6           # all-success lower bound well above 0
 
 
 def _separable_examples():
