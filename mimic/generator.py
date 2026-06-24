@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from mimic.types import Rule, Artifact
 
@@ -17,12 +18,13 @@ def mimic_judge(**inputs):
 
 
 class ArtifactGenerator:
-    def to_code(self, rules: list[Rule], report: dict, optimize: str) -> Artifact:
+    def to_code(self, rules: list[Rule], report: dict[str, Any], optimize: str) -> Artifact:
         used = sorted({r.feature for r in rules})
         lines = [_HEADER % {"used": used}]
         for r in rules:
             cond = self._pythonize(r.condition)
-            lines.append(f"    # {r.plain_english}  (confidence {r.confidence:.2f})")
+            comment = r.plain_english.replace("\n", " ")
+            lines.append(f"    # {comment}  (confidence {r.confidence:.2f})")
             lines.append(f"    if {cond}:")
             lines.append(f"        return {r.verdict}, {r.confidence:.2f}, {r.feature!r}")
         lines.append("    return None, 0.0, 'no_match'")
@@ -37,4 +39,4 @@ class ArtifactGenerator:
         # turn "entity_overlap_ratio > 0.800 and word_count <= 5.000" into f[...] lookups
         def repl(m: re.Match) -> str:
             return f"f[{m.group(0)!r}]"
-        return re.sub(r"[a-z_]+(?=\s*(<=|>))", repl, condition)
+        return re.sub(r"[a-z_]+(?=\s*(<=|>=|==|!=|<|>))", repl, condition)

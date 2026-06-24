@@ -32,3 +32,14 @@ def test_no_match_returns_none():
     verdict, conf, feat = ns["mimic_judge"](context="abc", response="totally different words here")
     assert verdict is None
     assert feat == "no_match"
+
+
+def test_empty_rules_always_returns_no_match():
+    art = ArtifactGenerator().to_code([], {"kappa": 0.0, "per_class_f1": {}, "coverage": 0.0},
+                                      optimize="speed")
+    assert art.features_used == []
+    ns: dict = {}
+    exec(art.content, ns)
+    verdict, conf, feat = ns["mimic_judge"](context="anything", response="anything")
+    assert verdict is None
+    assert feat == "no_match"
