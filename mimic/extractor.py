@@ -16,15 +16,24 @@ def _words(text: str) -> list[str]:
 class Extractor:
     _NAMES = ["word_count", "negation_count", "has_uncertainty",
               "novel_word_ratio", "entity_overlap_ratio"]
+    _CATEGORY = {"word_count": "structural", "negation_count": "linguistic",
+                 "has_uncertainty": "linguistic", "novel_word_ratio": "semantic",
+                 "entity_overlap_ratio": "semantic"}
 
     def feature_names(self) -> list[str]:
         return list(self._NAMES)
 
     def extract(self, inputs: dict[str, Any], only: list[str] | None = None) -> list[Feature]:
+        if only is not None:
+            unknown = set(only) - set(self._NAMES)
+            if unknown:
+                raise ValueError(f"unknown feature(s): {sorted(unknown)}")
+
         response = str(inputs.get("response", ""))
         context = str(inputs.get("context", ""))
         rwords = _words(response)
         cwords = set(_words(context))
+        rwords_set = set(rwords)
 
         values: dict[str, float | bool | int] = {
             "word_count": len(rwords),
@@ -34,13 +43,10 @@ class Extractor:
                 sum(1 for w in rwords if w not in cwords) / len(rwords) if rwords else 0.0
             ),
             "entity_overlap_ratio": (
-                sum(1 for w in cwords if w in set(rwords)) / len(cwords) if cwords else 0.0
+                sum(1 for w in cwords if w in rwords_set) / len(cwords) if cwords else 0.0
             ),
         }
 
         wanted = only if only is not None else self._NAMES
-        cat = {"word_count": "structural", "negation_count": "linguistic",
-               "has_uncertainty": "linguistic", "novel_word_ratio": "semantic",
-               "entity_overlap_ratio": "semantic"}
-        return [Feature(name, values[name], cat[name], "cheap")
+        return [Feature(name, values[name], self._CATEGORY[name], "cheap")
                 for name in wanted if name in values]

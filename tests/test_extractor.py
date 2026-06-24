@@ -1,3 +1,5 @@
+import pytest
+
 from mimic.extractor import Extractor
 
 
@@ -27,3 +29,10 @@ def test_pruning_returns_only_requested():
     ex = Extractor()
     feats = ex.extract({"response": "hello world"}, only=["word_count"])
     assert [f.name for f in feats] == ["word_count"]
+
+
+def test_unknown_only_name_raises():
+    ex = Extractor()
+    with pytest.raises(ValueError, match="unknown feature"):
+        ex.extract({"response": "hello"}, only=["word_count", "not_a_feature"])
+
