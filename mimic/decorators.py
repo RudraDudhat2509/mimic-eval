@@ -20,7 +20,7 @@ def judge(
     description: str,
     optimize: Literal["speed", "accuracy", "interpretability"] = "speed",
     threshold: float = 0.85,
-):
+) -> Callable[[Callable[..., bool]], Callable[..., bool]]:
     def decorator(fn: Callable[..., bool]) -> Callable[..., bool]:
         name = fn.__name__
         if name in _registry:

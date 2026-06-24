@@ -28,3 +28,13 @@ def test_duplicate_name_raises():
         @judge("second")
         def dup() -> bool:  # noqa: F811
             return False
+
+
+def test_defaults_applied_when_omitted():
+    @judge("only a description")
+    def plain_judge() -> bool:
+        return True
+
+    cfg = get_registry()["plain_judge"]
+    assert cfg.optimize == "speed"
+    assert cfg.threshold == 0.85
