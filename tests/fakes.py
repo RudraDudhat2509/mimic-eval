@@ -10,6 +10,8 @@ class FakeEmbedder:
     version = "fake-v1"
 
     def encode(self, texts: list[str]) -> np.ndarray:
+        if not texts:
+            return np.zeros((0, 0))
         out = []
         for t in texts:
             digest = hashlib.sha256(t.encode("utf-8")).digest()      # 32 bytes

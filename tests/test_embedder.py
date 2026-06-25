@@ -20,3 +20,8 @@ def test_fake_embedder_distinct_texts_differ():
 def test_real_embedder_module_imports_without_torch():
     import mimic.embedder  # must not import sentence_transformers at module load
     assert hasattr(mimic.embedder, "Embedder")
+
+
+def test_fake_embedder_empty_returns_empty_2d():
+    out = FakeEmbedder().encode([])
+    assert out.shape == (0, 0)
