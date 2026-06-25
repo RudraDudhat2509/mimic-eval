@@ -30,12 +30,12 @@ class TreeModel(_Coded):
         return self._decode(self.clf.predict(X))
 
     def attribution(self) -> str:
-        return f"decision tree (depth {self.clf.get_depth()}) — see extracted rules"
+        return f"decision tree (depth {self.clf.get_depth()}) - see extracted rules"
 
 
 class SparseLinearModel(_Coded):
     def __init__(self, C: float = 1.0, random_state: int = 42):
-        self.clf = LogisticRegression(penalty="l1", solver="liblinear",
+        self.clf = LogisticRegression(solver="liblinear",
                                       C=C, random_state=random_state)
         self.names = None
 
