@@ -30,13 +30,14 @@ def main() -> None:
     print(f"Downloading HaluEval QA from {URL} ...")
     text = urllib.request.urlopen(URL).read().decode("utf-8")
     records = parse_jsonl(text)[: args.n]
-    examples = halueval_records_to_examples(records)
 
     rng = random.Random(args.seed)
-    rng.shuffle(examples)
-    split = int(len(examples) * 0.8)
-    train, test = examples[:split], examples[split:]
-    print(f"{len(examples)} examples  |  train {len(train)}  test {len(test)}")
+    rng.shuffle(records)
+    rsplit = int(len(records) * 0.8)
+    train = halueval_records_to_examples(records[:rsplit])
+    test = halueval_records_to_examples(records[rsplit:])
+    print(f"{len(records)} records -> {len(train) + len(test)} examples  |  "
+          f"train {len(train)}  test {len(test)}  (record-level split, no context bleed)")
 
     rules, train_report = DistillationEngine(Extractor(), args.threshold).fit(train)
     artifact = ArtifactGenerator().to_code(rules, train_report, "speed")
