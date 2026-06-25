@@ -61,7 +61,6 @@ def _best_k(X: np.ndarray, k_range: tuple[int, int], seed: int) -> int:
 def discover_intents(sentences: list[str], embedder, namer: Callable[[list[str]], str] | None = None,
                      k_range: tuple[int, int] = (3, 8), seed: int = 42) -> IntentModel:
     X = embedder.encode(sentences)
-    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
     k = _best_k(X, k_range, seed)
     km = KMeans(n_clusters=k, random_state=seed, n_init=10).fit(X)
     centroids = np.round(km.cluster_centers_, 6)
