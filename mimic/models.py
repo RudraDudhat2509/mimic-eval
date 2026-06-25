@@ -35,8 +35,8 @@ class TreeModel(_Coded):
 
 class SparseLinearModel(_Coded):
     def __init__(self, C: float = 1.0, random_state: int = 42):
-        self.clf = LogisticRegression(solver="liblinear",
-                                      C=C, random_state=random_state)
+        self.clf = LogisticRegression(solver="saga", l1_ratio=1.0,
+                                      C=C, max_iter=5000, random_state=random_state)
         self.names = None
 
     def fit(self, X, y, names=None):

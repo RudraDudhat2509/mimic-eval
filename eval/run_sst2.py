@@ -80,6 +80,9 @@ def main() -> None:
     intents = discover_intents(sents, embedder, k_range=(3, 8), seed=args.seed)
     sem = SemanticExtractor(embedder, intents, fields=["sentence"], intent_field="sentence")
     comb = CombinedExtractor(Extractor(), sem)
+    # NOTE: SST-2 inputs use the "sentence" field, but Extractor's lexical features read
+    # "response"/"context", so the 5 lexical features are constant-zero here — only the
+    # semantic intent features carry signal for the named-feature models.
     Xtr, ytr, names = feature_matrix(train, comb)
     Xte, _, _ = feature_matrix(test, comb)
 
