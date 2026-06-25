@@ -43,3 +43,19 @@ def test_empty_rules_always_returns_no_match():
     verdict, conf, feat = ns["mimic_judge"](context="anything", response="anything")
     assert verdict is None
     assert feat == "no_match"
+
+
+def test_multi_feature_rule_extracts_all_referenced_features():
+    rule = Rule(feature="word_count",  # engine sets .feature to the LAST split only
+                condition="entity_overlap_ratio > 0.800 and word_count <= 5.000",
+                plain_english="high overlap and short answer",
+                verdict=True, confidence=0.90, confidence_interval=(0.85, 0.95),
+                coverage=10)
+    art = ArtifactGenerator().to_code([rule],
+            {"kappa": 0.8, "per_class_f1": {}, "coverage": 0.9}, optimize="speed")
+    assert set(art.features_used) == {"entity_overlap_ratio", "word_count"}
+    ns: dict = {}
+    exec(art.content, ns)
+    verdict, conf, feat = ns["mimic_judge"](context="returns within thirty days",
+                                            response="returns within thirty days")
+    assert verdict is True   # both conditions satisfied, and crucially: no KeyError

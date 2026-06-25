@@ -5,6 +5,12 @@ from typing import Any
 
 from mimic.types import Rule, Artifact
 
+_FEATURE_RE = re.compile(r"[a-z_]+(?=\s*(?:<=|>=|==|!=|<|>))")
+
+
+def _features_in(condition: str) -> list[str]:
+    return _FEATURE_RE.findall(condition)
+
 _HEADER = '''\
 from mimic.extractor import Extractor
 
@@ -19,7 +25,7 @@ def mimic_judge(**inputs):
 
 class ArtifactGenerator:
     def to_code(self, rules: list[Rule], report: dict[str, Any], optimize: str) -> Artifact:
-        used = sorted({r.feature for r in rules})
+        used = sorted({f for r in rules for f in _features_in(r.condition)})
         lines = [_HEADER % {"used": used}]
         for r in rules:
             cond = self._pythonize(r.condition)
