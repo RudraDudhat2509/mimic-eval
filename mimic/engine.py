@@ -9,6 +9,7 @@ from sklearn.metrics import cohen_kappa_score, f1_score
 
 from mimic.types import Example, Rule
 from mimic.extractor import Extractor
+from mimic.matrix import feature_matrix
 
 _PLAIN = {
     "word_count": "the answer length",
@@ -35,15 +36,10 @@ class DistillationEngine:
         self.threshold = threshold
 
     def _matrix(self, examples):
-        names = self.extractor.feature_names()
-        rows = []
-        for ex in examples:
-            feats = {f.name: float(f.value) for f in self.extractor.extract(ex.inputs)}
-            rows.append([feats[n] for n in names])
-        classes = sorted({ex.verdict for ex in examples}, key=lambda v: str(v))
+        X, y_raw, names = feature_matrix(examples, self.extractor)
+        classes = sorted(set(y_raw), key=lambda v: str(v))
         code = {c: i for i, c in enumerate(classes)}
-        X = np.array(rows, dtype=float)
-        y = np.array([code[ex.verdict] for ex in examples], dtype=int)
+        y = np.array([code[v] for v in y_raw], dtype=int)
         return X, y, names, classes
 
     def fit(self, examples):

@@ -35,3 +35,13 @@ def paws_rows_to_examples(rows: list[dict]) -> list[Example]:
             inputs={"sentence1": row["sentence1"], "sentence2": row["sentence2"]},
             verdict=verdict, source="production"))
     return examples
+
+
+def sst2_rows_to_examples(rows: list[dict]) -> list[Example]:
+    """SST-2 row -> sentiment example. label 1 = positive, 0 = negative."""
+    examples: list[Example] = []
+    for i, row in enumerate(rows):
+        verdict = "positive" if int(row["label"]) == 1 else "negative"
+        examples.append(Example(id=str(i), inputs={"sentence": row["sentence"]},
+                                verdict=verdict, source="production"))
+    return examples
