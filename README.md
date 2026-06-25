@@ -44,6 +44,27 @@ exec(artifact.content, ns)      # ns["mimic_judge"](**inputs) -> (verdict, confi
 - Dependency-free lexical feature extraction (pruned per judge)
 - Decision-tree distillation with **Wilson confidence intervals** and **Cohen's kappa** (never raw accuracy)
 - Pruned, runnable Python artifact generation
+- Holdout evaluation + a validation harness against real data
+
+## Does it actually work? (validation on real data)
+
+Tested against **HaluEval QA**, a public hallucination dataset. Each record becomes two grounding examples (a grounded answer and a hallucinated one); Mimic distills rules on a train split and is scored on a **record-level held-out split** — both halves of any record stay on the same side, so no context bleeds across the boundary.
+
+On `--n 500`, seed 42:
+
+| Metric | Held-out |
+|---|---|
+| Cohen's kappa | **0.96** |
+| F1 (grounded / not) | 0.98 / 0.98 |
+| Coverage | 92% |
+
+Reproduce it:
+
+```bash
+python eval/run_halueval.py --n 500
+```
+
+**Read this before quoting the number.** HaluEval is lexically easy by construction — hallucinated answers inject novel tokens while grounded answers reuse the source passage, so Mimic's lexical features (`novel_word_ratio`, `entity_overlap_ratio`) separate the classes almost perfectly. The 0.96 reflects how tractable *this* dataset is — exactly the kind of judge where cheap rules suffice — not a general hallucination-detection claim. Harder, more semantic judges will score lower, which is precisely why the full design falls back to the real LLM on the cases rules can't handle (coming in Slice 2).
 
 ## Design principles
 
