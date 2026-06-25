@@ -909,6 +909,300 @@ git commit -m "feat: end-to-end distill pipeline"
 
 ---
 
+## Validation Addendum — proving it on real data (Tasks 8–9)
+
+Tasks 1–7 are validated on synthetic data. These two tasks validate Mimic against a **real, public, labeled dataset** (HaluEval QA) and report the honest **held-out** number — the evidence that the tool actually works, and the first thing the README should cite.
+
+**Approach:** the *proxy test* — treat each dataset row's gold label as "the judge's verdict," distill rules on a train split, then measure agreement on a held-out test split. This needs no LLM and no network in the core modules (the download lives in a script under `eval/`). HaluEval QA is chosen because its schema is stable and simple: each record has `knowledge`, `question`, `right_answer`, `hallucinated_answer` — yielding one grounded example (`knowledge`, `right_answer` → True) and one hallucinated example (`knowledge`, `hallucinated_answer` → False). This maps directly onto Mimic's grounding features (entity overlap, novel-word ratio).
+
+---
+
+### Task 8: Holdout evaluation function
+
+**Files:**
+- Create: `mimic/evaluate.py`
+- Test: `tests/test_evaluate.py`
+
+**Interfaces:**
+- Consumes: `Artifact`, `Example` from `mimic.types`; the generated artifact's `mimic_judge(**inputs) -> (verdict | None, confidence, feature)`.
+- Produces: `evaluate_artifact(artifact: Artifact, examples: list[Example]) -> dict` with keys `n_total`, `n_covered`, `coverage`, `kappa`, `per_class_f1`. It execs the artifact, runs every example, treats a `None` verdict as an abstention (not covered), and computes kappa + per-class F1 on the covered subset against each example's gold `verdict`. Also exposes `load_judge(artifact) -> Callable`.
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/test_evaluate.py
+from mimic.types import Rule, Example
+from mimic.generator import ArtifactGenerator
+from mimic.evaluate import evaluate_artifact
+
+
+def _single_rule_artifact():
+    rule = Rule(feature="entity_overlap_ratio",
+                condition="entity_overlap_ratio > 0.800",
+                plain_english="answer mentions the same things as the context",
+                verdict=True, confidence=0.9, confidence_interval=(0.85, 0.95), coverage=10)
+    return ArtifactGenerator().to_code(
+        [rule], {"kappa": 0.9, "per_class_f1": {}, "coverage": 0.9}, optimize="speed")
+
+
+def test_evaluate_reports_coverage_and_abstention():
+    art = _single_rule_artifact()
+    examples = [
+        Example(id="1", inputs={"context": "returns within thirty days",
+                                "response": "returns within thirty days"}, verdict=True),
+        Example(id="2", inputs={"context": "returns within thirty days",
+                                "response": "returns within thirty days"}, verdict=True),
+        Example(id="3", inputs={"context": "free shipping over fifty",
+                                "response": "totally unrelated novel words here friend"}, verdict=False),
+    ]
+    report = evaluate_artifact(art, examples)
+    assert report["n_total"] == 3
+    assert report["n_covered"] == 2          # ex3 has 0 overlap -> rule abstains
+    assert report["coverage"] == 2 / 3
+    assert report["per_class_f1"]["True"] == 1.0
+
+
+def test_evaluate_kappa_with_both_classes():
+    rules = [
+        Rule("entity_overlap_ratio", "entity_overlap_ratio > 0.800", "overlap high",
+             True, 0.9, (0.85, 0.95), 10),
+        Rule("novel_word_ratio", "novel_word_ratio > 0.400", "many novel words",
+             False, 0.9, (0.85, 0.95), 10),
+    ]
+    art = ArtifactGenerator().to_code(
+        rules, {"kappa": 0.9, "per_class_f1": {}, "coverage": 0.9}, optimize="speed")
+    examples = [
+        Example(id="1", inputs={"context": "alpha beta gamma",
+                                "response": "alpha beta gamma"}, verdict=True),
+        Example(id="2", inputs={"context": "alpha beta gamma",
+                                "response": "zzz qqq www novel unrelated words here now"}, verdict=False),
+    ]
+    report = evaluate_artifact(art, examples)
+    assert report["n_covered"] == 2
+    assert report["kappa"] == 1.0            # perfect agreement across both classes
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pytest tests/test_evaluate.py -v`
+Expected: FAIL with `ModuleNotFoundError: No module named 'mimic.evaluate'`
+
+- [ ] **Step 3: Write the evaluator**
+
+```python
+# mimic/evaluate.py
+from __future__ import annotations
+
+from typing import Any, Callable
+
+from sklearn.metrics import cohen_kappa_score, f1_score
+
+from mimic.types import Artifact, Example
+
+
+def load_judge(artifact: Artifact) -> Callable[..., tuple]:
+    ns: dict = {}
+    exec(artifact.content, ns)
+    return ns["mimic_judge"]
+
+
+def evaluate_artifact(artifact: Artifact, examples: list[Example]) -> dict[str, Any]:
+    judge = load_judge(artifact)
+    y_true: list[int] = []
+    y_pred: list[int] = []
+    for ex in examples:
+        verdict, _conf, _feat = judge(**ex.inputs)
+        if verdict is None:               # artifact abstained -> not covered
+            continue
+        y_true.append(1 if ex.verdict else 0)
+        y_pred.append(1 if verdict else 0)
+
+    n_total = len(examples)
+    n_covered = len(y_pred)
+    kappa = 0.0
+    if n_covered and len(set(y_true)) > 1 and len(set(y_pred)) > 1:
+        kappa = float(cohen_kappa_score(y_true, y_pred))
+
+    return {
+        "n_total": n_total,
+        "n_covered": n_covered,
+        "coverage": n_covered / n_total if n_total else 0.0,
+        "kappa": kappa,
+        "per_class_f1": {
+            "True": float(f1_score(y_true, y_pred, pos_label=1, zero_division=0)) if y_pred else 0.0,
+            "False": float(f1_score(y_true, y_pred, pos_label=0, zero_division=0)) if y_pred else 0.0,
+        },
+    }
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pytest tests/test_evaluate.py -v`
+Expected: PASS (2 passed)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add mimic/evaluate.py tests/test_evaluate.py
+git commit -m "feat: holdout evaluation of artifact vs gold labels"
+```
+
+---
+
+### Task 9: Real-dataset harness (HaluEval QA)
+
+**Files:**
+- Create: `mimic/datasets.py`
+- Create: `eval/run_halueval.py`
+- Test: `tests/test_datasets.py`
+
+**Interfaces:**
+- Consumes: `Example` from `mimic.types`; `Extractor`, `DistillationEngine`, `ArtifactGenerator`, `evaluate_artifact`.
+- Produces: in `mimic/datasets.py` (pure, no network): `parse_jsonl(text: str) -> list[dict]` and `halueval_records_to_examples(records: list[dict]) -> list[Example]` (each record → two Examples, `source="production"`). In `eval/run_halueval.py`: a runnable script that downloads HaluEval QA, distills on a train split, and prints held-out kappa / F1 / coverage. The script is the ONLY place a network call is allowed (it is not imported by the `mimic` package).
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/test_datasets.py
+from mimic.datasets import parse_jsonl, halueval_records_to_examples
+
+
+def test_parse_jsonl_skips_blank_lines():
+    text = '{"a": 1}\n\n{"a": 2}\n'
+    assert parse_jsonl(text) == [{"a": 1}, {"a": 2}]
+
+
+def test_halueval_record_yields_two_labeled_examples():
+    recs = [{"knowledge": "The sky is blue.", "question": "color?",
+             "right_answer": "The sky is blue.", "hallucinated_answer": "The sky is green."}]
+    exs = halueval_records_to_examples(recs)
+    assert len(exs) == 2
+    assert exs[0].verdict is True
+    assert exs[0].inputs == {"context": "The sky is blue.", "response": "The sky is blue."}
+    assert exs[0].source == "production"
+    assert exs[1].verdict is False
+    assert exs[1].inputs["response"] == "The sky is green."
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pytest tests/test_datasets.py -v`
+Expected: FAIL with `ModuleNotFoundError: No module named 'mimic.datasets'`
+
+- [ ] **Step 3: Write the dataset reshaper**
+
+```python
+# mimic/datasets.py
+from __future__ import annotations
+
+import json
+
+from mimic.types import Example
+
+
+def parse_jsonl(text: str) -> list[dict]:
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+
+def halueval_records_to_examples(records: list[dict]) -> list[Example]:
+    """Each HaluEval QA record yields two grounding examples:
+    (knowledge, right_answer) -> grounded True; (knowledge, hallucinated_answer) -> False.
+    """
+    examples: list[Example] = []
+    for i, rec in enumerate(records):
+        ctx = rec["knowledge"]
+        examples.append(Example(id=f"{i}-r",
+                                inputs={"context": ctx, "response": rec["right_answer"]},
+                                verdict=True, source="production"))
+        examples.append(Example(id=f"{i}-h",
+                                inputs={"context": ctx, "response": rec["hallucinated_answer"]},
+                                verdict=False, source="production"))
+    return examples
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pytest tests/test_datasets.py -v`
+Expected: PASS (2 passed)
+
+- [ ] **Step 5: Write the harness script**
+
+```python
+# eval/run_halueval.py
+"""Validate Mimic on real HaluEval QA data (proxy test: gold labels as the judge's verdicts).
+
+Usage: python eval/run_halueval.py [--n 1000] [--threshold 0.6] [--seed 42]
+
+Downloads HaluEval QA, builds (context, response) -> grounded examples, distills rules on
+a train split, and reports kappa / F1 / coverage on a HELD-OUT test split (the honest number).
+"""
+from __future__ import annotations
+
+import argparse
+import random
+import urllib.request
+
+from mimic.datasets import parse_jsonl, halueval_records_to_examples
+from mimic.extractor import Extractor
+from mimic.engine import DistillationEngine
+from mimic.generator import ArtifactGenerator
+from mimic.evaluate import evaluate_artifact
+
+URL = "https://raw.githubusercontent.com/RUCAIBox/HaluEval/main/data/qa_data.json"
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--n", type=int, default=1000, help="max records (each yields 2 examples)")
+    ap.add_argument("--threshold", type=float, default=0.6)
+    ap.add_argument("--seed", type=int, default=42)
+    args = ap.parse_args()
+
+    print(f"Downloading HaluEval QA from {URL} ...")
+    text = urllib.request.urlopen(URL).read().decode("utf-8")
+    records = parse_jsonl(text)[: args.n]
+    examples = halueval_records_to_examples(records)
+
+    rng = random.Random(args.seed)
+    rng.shuffle(examples)
+    split = int(len(examples) * 0.8)
+    train, test = examples[:split], examples[split:]
+    print(f"{len(examples)} examples  |  train {len(train)}  test {len(test)}")
+
+    rules, train_report = DistillationEngine(Extractor(), args.threshold).fit(train)
+    artifact = ArtifactGenerator().to_code(rules, train_report, "speed")
+
+    print(f"\nLearned {len(rules)} rules (train kappa {train_report['kappa']:.2f}):")
+    for r in rules:
+        verdict = "GROUNDED" if r.verdict else "NOT GROUNDED"
+        print(f"  - {r.plain_english} -> {verdict}  ({r.confidence:.0%}, covers {r.coverage})")
+
+    holdout = evaluate_artifact(artifact, test)
+    print("\nHeld-out test results (the honest number):")
+    print(f"  coverage: {holdout['coverage']:.0%}  ({holdout['n_covered']}/{holdout['n_total']})")
+    print(f"  kappa:    {holdout['kappa']:.2f}")
+    print(f"  F1:       grounded {holdout['per_class_f1']['True']:.2f} / "
+          f"not-grounded {holdout['per_class_f1']['False']:.2f}")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+- [ ] **Step 6: Smoke-run the harness (manual, needs network)**
+
+Run: `python eval/run_halueval.py --n 500`
+Expected: prints a learned rule list and a held-out block with a real `kappa` value (a positive number well above 0 indicates the lexical rules capture real grounding signal). This is a qualitative smoke check, not a unit test — if the download fails (offline), skip and note it.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add mimic/datasets.py eval/run_halueval.py tests/test_datasets.py
+git commit -m "feat: HaluEval validation harness with held-out reporting"
+```
+
+---
+
 ## Self-Review
 
 **Spec coverage (Slice 1 scope):**
@@ -918,6 +1212,8 @@ git commit -m "feat: end-to-end distill pipeline"
 - Distillation Engine: class-balanced tree, CV-style confidence via Wilson intervals, kappa + per-class F1, threshold on lower bound → Task 4 ✓
 - Artifact Generator: pruned runnable code, `features_used` → Task 5 ✓
 - End-to-end orchestration → Task 7 ✓
+- Holdout evaluation function (kappa/F1/coverage of artifact vs gold) → Task 8 ✓
+- Real-dataset validation harness (HaluEval QA, held-out reporting) → Task 9 ✓
 - Deferred to later slices (out of this plan, by design): middleware, intent, shadow, cascade runtime, logger, CLI, Output & Voice, score judges, embeddings. Tracked for Slice 2 and Slice 3.
 
 **Placeholder scan:** No TBD/TODO; every code step shows full content; tests contain real assertions.
@@ -928,4 +1224,4 @@ git commit -m "feat: end-to-end distill pipeline"
 
 ## Execution Handoff
 
-This is Slice 1 of 3. Slices 2 (runtime: middleware, cascade, shadow, logger) and 3 (CLI + Output & Voice) get their own plans after this one executes and is green.
+This is Slice 1 of 3. Tasks 1–7 are built, reviewed, and shipped. Tasks 8–9 (the validation addendum) are the next to execute — they prove the tool on real HaluEval QA data and produce the held-out kappa number for the README. Slices 2 (runtime: middleware, cascade, shadow, logger) and 3 (CLI + Output & Voice) get their own plans afterward.
