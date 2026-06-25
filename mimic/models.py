@@ -65,6 +65,30 @@ class SparseLinearModel(_Coded):
             }
         return out
 
+    def to_code(self) -> str:
+        coefs = np.atleast_2d(self.clf.coef_)
+        intercepts = np.atleast_1d(self.clf.intercept_)
+        names = self.names
+        lines = [
+            "def mimic_judge(f):",
+            '    """Weighted scorecard. f maps feature_name -> value. Returns (category, score)."""',
+            "    scores = {}",
+        ]
+        if coefs.shape[0] == 1:                       # binary
+            terms = " + ".join(
+                f"{round(float(w), 6)}*f.get({names[i]!r}, 0.0)" for i, w in enumerate(coefs[0]))
+            lines.append(f"    scores[{self.classes_[1]!r}] = {round(float(intercepts[0]), 6)} + {terms}")
+            lines.append(f"    scores[{self.classes_[0]!r}] = 0.0")
+        else:                                         # multiclass OvR
+            for ci in range(coefs.shape[0]):
+                terms = " + ".join(
+                    f"{round(float(w), 6)}*f.get({names[i]!r}, 0.0)" for i, w in enumerate(coefs[ci]))
+                lines.append(
+                    f"    scores[{self.classes_[ci]!r}] = {round(float(intercepts[ci]), 6)} + {terms}")
+        lines.append("    best = max(scores, key=scores.get)")
+        lines.append("    return best, round(float(scores[best]), 6)")
+        return "\n".join(lines) + "\n"
+
 
 class EmbeddingLinearModel(_Coded):
     def __init__(self, C: float = 1.0, random_state: int = 42):
