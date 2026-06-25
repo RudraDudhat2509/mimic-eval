@@ -47,3 +47,15 @@ def test_evaluate_kappa_with_both_classes():
     report = evaluate_artifact(art, examples)
     assert report["n_covered"] == 2
     assert report["kappa"] == 1.0            # perfect agreement across both classes
+
+
+def test_kappa_zero_when_single_gold_class():
+    art = _single_rule_artifact()
+    # both covered examples are gold True -> gold has only one class -> kappa undefined -> 0.0
+    examples = [
+        Example(id="1", inputs={"context": "alpha beta gamma", "response": "alpha beta gamma"}, verdict=True),
+        Example(id="2", inputs={"context": "alpha beta gamma", "response": "alpha beta gamma"}, verdict=True),
+    ]
+    report = evaluate_artifact(art, examples)
+    assert report["n_covered"] == 2
+    assert report["kappa"] == 0.0

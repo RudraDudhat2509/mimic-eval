@@ -27,7 +27,7 @@ def evaluate_artifact(artifact: Artifact, examples: list[Example]) -> dict[str, 
     n_total = len(examples)
     n_covered = len(y_pred)
     kappa = 0.0
-    if n_covered and len(set(y_true)) > 1 and len(set(y_pred)) > 1:
+    if n_covered and len(set(y_true)) > 1:
         kappa = float(cohen_kappa_score(y_true, y_pred))
 
     return {
