@@ -17,7 +17,7 @@ class JudgeConfig:
 class Example:
     id: str
     inputs: dict[str, Any]
-    verdict: bool | None = None
+    verdict: bool | int | str | None = None
     source: Literal["generated", "production"] = "generated"
 
 
@@ -34,7 +34,7 @@ class Rule:
     feature: str
     condition: str
     plain_english: str
-    verdict: bool
+    verdict: bool | int | str
     confidence: float
     confidence_interval: tuple[float, float]
     coverage: int

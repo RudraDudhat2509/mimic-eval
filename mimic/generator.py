@@ -5,7 +5,7 @@ from typing import Any
 
 from mimic.types import Rule, Artifact
 
-_FEATURE_RE = re.compile(r"[a-z_]+(?=\s*(?:<=|>=|==|!=|<|>))")
+_FEATURE_RE = re.compile(r"[a-z_][a-z0-9_]*(?=\s*(?:<=|>=|==|!=|<|>))")
 
 
 def _features_in(condition: str) -> list[str]:
@@ -32,7 +32,7 @@ class ArtifactGenerator:
             comment = r.plain_english.replace("\n", " ")
             lines.append(f"    # {comment}  (confidence {r.confidence:.2f})")
             lines.append(f"    if {cond}:")
-            lines.append(f"        return {r.verdict}, {r.confidence:.2f}, {r.feature!r}")
+            lines.append(f"        return {r.verdict!r}, {r.confidence:.2f}, {r.feature!r}")
         lines.append("    return None, 0.0, 'no_match'")
         content = "\n".join(lines) + "\n"
         return Artifact(type="code", content=content, features_used=used,
@@ -45,4 +45,4 @@ class ArtifactGenerator:
         # turn "entity_overlap_ratio > 0.800 and word_count <= 5.000" into f[...] lookups
         def repl(m: re.Match) -> str:
             return f"f[{m.group(0)!r}]"
-        return re.sub(r"[a-z_]+(?=\s*(<=|>=|==|!=|<|>))", repl, condition)
+        return re.sub(r"[a-z_][a-z0-9_]*(?=\s*(<=|>=|==|!=|<|>))", repl, condition)
